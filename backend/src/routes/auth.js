@@ -1,5 +1,6 @@
 const express = require('express');
 const { z } = require('zod');
+const { createClient } = require('@supabase/supabase-js');
 const supabase = require('../utils/supabaseClient');
 const logger = require('../utils/logger');
 const verifyJWT = require('../middleware/verifyJWT');
@@ -26,7 +27,14 @@ router.post('/login', async (req, res, next) => {
 
     const { email, password } = parsed.data;
 
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    // Use a throwaway client for signInWithPassword so the shared
+    // service-role client's auth state is not polluted (which would
+    // cause subsequent DB queries to run under the user's JWT / RLS).
+    const authClient = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+
+    const { data, error } = await authClient.auth.signInWithPassword({ email, password });
 
     if (error) {
       return res.status(401).json({
